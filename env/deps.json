@@ -1,0 +1,45 @@
+{
+  "brew": [
+    "coreutils",
+    "go",
+    "git",
+    "curl",
+    "postgresql@15",
+    "python",
+    "ruff",
+    "zig"
+  ],
+  "brewcask": [],
+  "go": [
+    "golang.org/x/tools/cmd/goimports",
+    "github.com/oligot/go-mod-upgrade",
+    "github.com/bokwoon95/wgo"
+  ],
+  "nvm": ["node"],
+  "pip": [
+    "setuptools",
+    "pip-upgrader",
+    "jupyterlab",
+    "numpy==1.*",
+    "pandas",
+    "duckdb",
+    "requests",
+    "urllib3",
+    "pytz",
+    "polars[numpy,fsspec,pandas,iceberg]"
+  ],
+  "custom": [
+    {
+      "name": "nvm",
+      "command": "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash"
+    },
+    {
+      "name": "golangci-lint",
+      "command": "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b \"$(go env GOPATH)\"/bin latest"
+    },
+    {
+      "name": "rust",
+      "command": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+    }
+  ]
+}

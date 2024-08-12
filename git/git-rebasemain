@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+CURRENT_BRANCH=$(git branch --show-current)
+STASH_NAME="${CURRENT_BRANCH}-$(date +%s)"
+
+stash_changes() {
+    echo "Stashing changes..."
+    if ! git stash push -m "$STASH_NAME"; then
+        echo "Error: Failed to stash changes. Aborting."
+        exit 1
+    fi
+}
+
+apply_stash() {
+    echo "Applying stash..."
+    local stash_ref
+    stash_ref=$(git stash list --format="%gd: %gs" | grep "$STASH_NAME" | cut -d: -f1)
+    if [ -n "$stash_ref" ]; then
+        git stash pop "$stash_ref" &> /dev/null
+    else
+        echo "No stash found with name: $STASH_NAME" >&2
+    fi
+}
+
+rebase_main() {
+    echo "Rebasing main onto $CURRENT_BRANCH..."
+    if git diff-index --quiet HEAD --; then
+        git checkout main
+        git fetch && git pull
+        git checkout "$CURRENT_BRANCH"
+        if ! git rebase main; then
+            echo "Error: Rebase conflict detected. Resolve conflicts and continue the rebase manually (git rebase --continue)." >&2
+            exit 1
+        fi
+    else
+        echo "There are changes on $CURRENT_BRANCH. Skipping rebase with main."
+    fi
+}
+
+# Stash changes, rebase main, and apply stash (if stashed changes)
+stash_changes
+rebase_main
+apply_stash

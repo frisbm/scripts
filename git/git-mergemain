@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+CURRENT_BRANCH=$(git branch --show-current)
+STASH_NAME="${CURRENT_BRANCH}-$(date +%s)"
+
+stash_changes() {
+    echo "Stashing changes..."
+    if ! git stash push -m "$STASH_NAME"; then
+        echo "Error: Failed to stash changes. Aborting."
+        exit 1
+    fi
+}
+
+apply_stash() {
+    echo "Applying stash..."
+    local stash_ref
+    stash_ref=$(git stash list --format="%gd: %gs" | grep "$STASH_NAME" | cut -d: -f1)
+    if [ -n "$stash_ref" ]; then
+        git stash pop "$stash_ref" &> /dev/null
+    else
+        echo "No stash found with name: $STASH_NAME" >&2
+    fi
+}
+
+merge_main() {
+    echo "Merging main into $CURRENT_BRANCH..."
+    if git diff-index --quiet HEAD --; then
+        git checkout main
+        git fetch && git pull
+        git checkout "$CURRENT_BRANCH"
+        if ! git merge main; then
+            echo "Error: Merge conflict detected. Resolve conflicts and run the script again." >&2
+            exit 1
+        fi
+    else
+        echo "There are changes on $CURRENT_BRANCH. Skipping merge with main."
+    fi
+}
+
+# Stash changes, merge main, and apply stash (if stashed changes)
+stash_changes
+merge_main
+apply_stash

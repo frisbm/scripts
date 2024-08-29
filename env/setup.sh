@@ -70,3 +70,7 @@ get_deps "pip" | while read -r package; do
     echo "Installing $package"
     pip install -qU $package
 done
+
+get_deps "jupyter" | while read -r package; do
+    jupyter server extension enable --py $package
+done

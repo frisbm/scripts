@@ -31,6 +31,7 @@
     "pytz",
     "polars[numpy,fsspec,pandas,iceberg]"
   ],
+  "jupyter": ["jupyterlab_code_formatter"],
   "custom": [
     {
       "name": "nvm",
@@ -43,10 +44,6 @@
     {
       "name": "rust",
       "command": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
-    },
-    {
-      "name": "jupyter extension: formatter",
-      "command": "jupyter server extension enable --py jupyterlab_code_formatter"
     }
   ]
 }

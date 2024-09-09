@@ -30,7 +30,7 @@ merge_main() {
         git checkout main
         git fetch && git pull
         git checkout "$CURRENT_BRANCH"
-        if ! git merge main; then
+        if ! git merge main --no-edit; then
             echo "Error: Merge conflict detected. Resolve conflicts and run the script again." >&2
             exit 1
         fi

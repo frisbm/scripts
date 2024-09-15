@@ -29,3 +29,10 @@ alias python="python3"
 alias pip="pip3"
 [ -s "$HOME/.venv/bin/activate" ] && source "$HOME/.venv/bin/activate"
 ##############################################################################################
+
+
+# Zig ENV #################################################################################
+export ZVM_INSTALL="$HOME/.zvm/self"
+export PATH="$PATH:$HOME/.zvm/bin"
+export PATH="$PATH:$ZVM_INSTALL/"
+##############################################################################################

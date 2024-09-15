@@ -1,14 +1,5 @@
 {
-  "brew": [
-    "coreutils",
-    "go",
-    "git",
-    "curl",
-    "postgresql@15",
-    "python",
-    "ruff",
-    "zig"
-  ],
+  "brew": ["coreutils", "go", "git", "curl", "postgresql@15", "python", "ruff"],
   "brewcask": [],
   "go": [
     "golang.org/x/tools/cmd/goimports",
@@ -44,6 +35,14 @@
     {
       "name": "rust",
       "command": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+    },
+    {
+      "name": "zvm",
+      "command": "curl https://raw.githubusercontent.com/tristanisham/zvm/master/install.sh | bash"
+    },
+    {
+      "name": "zig",
+      "command": "zvm i master"
     }
   ]
 }

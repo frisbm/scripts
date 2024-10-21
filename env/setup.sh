@@ -58,13 +58,17 @@ get_deps "nvm" | while read -r package; do
     nvm install "$package"
 done
 
+get_deps "npm" | while read -r package; do
+    npm i -g "$package"
+done
+
 # if ~/.venv exists, delete it
 if [ -d ~/.venv ]; then
     rm -rf ~/.venv || true
 fi
-python3 -m venv ~/.venv
+python3.12 -m venv ~/.venv
 source ~/.venv/bin/activate
-python -m ensurepip --upgrade
+python3.12 -m ensurepip --upgrade
 pip install --upgrade pip
 get_deps "pip" | while read -r package; do
     echo "Installing $package"

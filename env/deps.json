@@ -1,5 +1,13 @@
 {
-  "brew": ["coreutils", "go", "git", "curl", "postgresql@15", "python", "ruff"],
+  "brew": [
+    "coreutils",
+    "go",
+    "git",
+    "curl",
+    "postgresql@15",
+    "python@3.12",
+    "ruff"
+  ],
   "brewcask": [],
   "go": [
     "golang.org/x/tools/cmd/goimports",
@@ -7,20 +15,24 @@
     "github.com/bokwoon95/wgo"
   ],
   "nvm": ["node"],
+  "npm": ["npm-check-updates"],
   "pip": [
     "setuptools",
     "pip-upgrader",
-    "black",
-    "isort",
     "jupyterlab",
     "jupyterlab-code-formatter",
-    "numpy==1.*",
-    "pandas",
+    "numpy",
+    "pytest",
+    "pandas[performance]",
     "duckdb",
     "requests",
     "urllib3",
     "pytz",
-    "polars[numpy,fsspec,pandas,iceberg]"
+    "black",
+    "isort",
+    "pyarrow",
+    "polars[numpy,fsspec,pandas,iceberg]",
+    "lxml"
   ],
   "jupyter": ["jupyterlab_code_formatter"],
   "custom": [

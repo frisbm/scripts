@@ -32,7 +32,8 @@
     "isort",
     "pyarrow",
     "polars[numpy,fsspec,pandas,iceberg]",
-    "lxml"
+    "lxml",
+    "httpx"
   ],
   "jupyter": ["jupyterlab_code_formatter"],
   "custom": [

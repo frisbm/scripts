@@ -6,7 +6,8 @@
     "curl",
     "postgresql@15",
     "python@3.12",
-    "ruff"
+    "ruff",
+    "uv"
   ],
   "brewcask": [],
   "go": [
@@ -17,8 +18,6 @@
   "nvm": ["node"],
   "npm": ["npm-check-updates"],
   "pip": [
-    "setuptools",
-    "pip-upgrader",
     "jupyterlab",
     "jupyterlab-code-formatter",
     "numpy",
@@ -32,10 +31,10 @@
     "isort",
     "pyarrow",
     "polars[numpy,fsspec,pandas,iceberg]",
-    "lxml",
     "httpx"
   ],
   "jupyter": ["jupyterlab_code_formatter"],
+  "sdk": ["java 17.0.14-tem", "scala 2.13.16"],
   "custom": [
     {
       "name": "nvm",
@@ -56,6 +55,10 @@
     {
       "name": "zig",
       "command": "zvm i master"
+    },
+    {
+      "name": "sdkman",
+      "command": "curl -s https://get.sdkman.io | bash"
     }
   ]
 }

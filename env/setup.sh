@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-set -euo pipefail
+set -eo pipefail
 
 # This script installs all the dependencies from the deps.json file
 
@@ -77,4 +77,11 @@ done
 
 get_deps "jupyter" | while read -r package; do
     jupyter server extension enable --py $package
+done
+
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+get_deps "sdk" | while read -r package; do
+    sdk install $package
+    sdk default $package
+    sdk use $package
 done

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+CURRENT_BRANCH=$(git branch --show-current)
+STASH_NAME="${CURRENT_BRANCH}-$(date +%s)"
+
+stash_changes() {
+    echo "Stashing changes..."
+    if ! git stash push -m "$STASH_NAME"; then
+        echo "Error: Failed to stash changes. Aborting."
+        exit 1
+    fi
+}
+
+apply_stash() {
+    echo "Applying stash..."
+    local stash_ref
+    stash_ref=$(git stash list --format="%gd: %gs" | grep "$STASH_NAME" | cut -d: -f1)
+    if [ -n "$stash_ref" ]; then
+        git stash pop "$stash_ref" &> /dev/null
+    else
+        echo "No stash found with name: $STASH_NAME" >&2
+    fi
+}
+
+reset_main() {
+    echo "Resetting $CURRENT_BRANCH to match main..."
+    git fetch origin main
+    git checkout main
+    git pull
+    git checkout "$CURRENT_BRANCH"
+    base=$(git merge-base main "$CURRENT_BRANCH")
+    if ! git reset "$base"; then
+        echo "Error: Failed to reset branch to match main. Aborting." >&2
+        exit 1
+    fi
+}
+
+# Stash changes, reset main, and apply stash (if stashed changes)
+stash_changes
+reset_main
+apply_stash

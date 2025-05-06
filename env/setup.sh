@@ -66,9 +66,9 @@ done
 if [ -d ~/.venv ]; then
     rm -rf ~/.venv || true
 fi
-python3.12 -m venv ~/.venv
+/opt/homebrew/bin/python3 -m venv ~/.venv
 source ~/.venv/bin/activate
-python3.12 -m ensurepip --upgrade
+python -m ensurepip --upgrade
 pip install --upgrade pip
 get_deps "pip" | while read -r package; do
     echo "Installing $package"

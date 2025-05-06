@@ -40,5 +40,25 @@ if [[ $V_PREFIX == true ]]; then
 fi
 echo "Next tag: $NEXT_TAG"
 
-git tag -a "$NEXT_TAG" -m "$NEXT_TAG"
-git push origin "$NEXT_TAG"
+CMD="git tag -a \"$NEXT_TAG\" -m \"$NEXT_TAG\" && git push origin \"$NEXT_TAG\""
+echo "Command to run: $CMD"
+
+
+while true; do
+    read -n1 -r -p "Push tag? [y/n]: " answer
+    echo ""
+    case "$answer" in
+        [Yy] )
+            echo "Running: $CMD"
+            eval "$CMD"
+            break
+        ;;
+        [Nn] )
+            echo "Aborting push."
+            exit 0
+        ;;
+        * )
+            echo "Please enter y or n."
+        ;;
+    esac
+done

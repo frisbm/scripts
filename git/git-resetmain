@@ -30,7 +30,7 @@ reset_main() {
     git checkout main
     git pull
     git checkout "$CURRENT_BRANCH"
-    base=$(git merge-base main "$CURRENT_BRANCH")
+    base=$(git merge-base origin/main "$CURRENT_BRANCH")
     if ! git reset "$base"; then
         echo "Error: Failed to reset branch to match main. Aborting." >&2
         exit 1

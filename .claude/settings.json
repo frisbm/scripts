@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": ["WebFetch"]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); model=$(echo \"$input\" | jq -r '.model.display_name'); dir=$(basename \"$(echo \"$input\" | jq -r '.workspace.current_dir')\"); branch=$(cd \"$(echo \"$input\" | jq -r '.workspace.current_dir')\" 2>/dev/null && git branch --show-current 2>/dev/null || echo \"main\"); cost_raw=$(echo \"$input\" | jq -r '.cost.total_cost_usd // 0'); cost=$(printf \"%.2f\" \"$cost_raw\"); echo \"🤖 $model │ 📂 $dir │ 🌿 $branch │ 💰 \\$$cost\""
+  },
+  "enabledPlugins": {},
+  "alwaysThinkingEnabled": true
+}

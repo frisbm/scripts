@@ -44,6 +44,10 @@ get_deps "go" | while read -r package; do
     go install "$package"@latest
 done
 
+get_deps "gcloud" | while read -r package; do
+    gcloud components install --quiet $package
+done
+
 get_deps "custom" | while read -r package; do
     name=$(echo "$package" | jq -r '.name')
     cmd=$(echo "$package" | jq -r '.command')

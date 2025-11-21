@@ -19,7 +19,8 @@
     "ripgrep",
     "zsh",
     "zsh-autosuggestions",
-    "zsh-syntax-highlighting"
+    "zsh-syntax-highlighting",
+    "derailed/k9s/k9s"
   ],
   "brewcask": ["google-cloud-sdk", "iterm2"],
   "go": [

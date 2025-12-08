@@ -7,30 +7,41 @@ BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
 SAFE_BRANCH_NAME="$(echo "$BRANCH_NAME" | sed 's/[^A-Za-z0-9._-]/_/g')"
 OUTFILE="/tmp/diff-${REPO_NAME}-${SAFE_BRANCH_NAME}.json"
 
-git diff --no-color --output-indicator-new="+" --output-indicator-old="-" main...HEAD |
-jq -R -s '
-  split("\n")
-  | reduce .[] as $line (
-      {current: null, out: []};
-      if ($line | startswith("diff --git "))
-      then
-        (if .current != null then .out += [ .current ] else . end)
-        | .current = {
-            filepath: (
-              $line
-              | capture("diff --git a/(?<a>[^ ]+) b/(?<b>[^ ]+)").b
-            ),
-            diff: $line + "\n"
-          }
-      else
-        if .current != null then
-          .current.diff += ($line + "\n")
+git diff --no-color --output-indicator-new="+" --output-indicator-old="-" main...HEAD \
+  | jq -R -s '
+    split("\n")
+    | reduce .[] as $line (
+        {current: null, out: []};
+        if ($line | startswith("diff --git "))
+        then
+          (if .current != null then .out += [ .current ] else . end)
+          | .current = {
+              filepath: (
+                $line
+                | capture("diff --git a/(?<a>[^ ]+) b/(?<b>[^ ]+)").b
+              ),
+              diff: "\($line)\n"
+            }
         else
-          .
+          if .current != null then
+            .current.diff += "\($line)\n"
+          else
+            .
+          end
         end
-      end
-    )
-    | (if .current != null then .out + [ .current ] else .out end)
-' > "$OUTFILE"
+      )
+      | (if .current != null then .out + [ .current ] else .out end)
+      # Post-process each diff to clean it up
+      | map(
+          .diff |= (
+            split("\n")
+            # Drop the "No newline at end of file" noise
+            | map(select(. != "\\ No newline at end of file"))
+            | join("\n")
+            # Remove any trailing newline
+            | rtrimstr("\n")
+          )
+        )
+  ' > "$OUTFILE"
 
 echo "Wrote diff JSON to $OUTFILE"

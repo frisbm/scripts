@@ -70,7 +70,7 @@ done
 if [ -d ~/.venv ]; then
     rm -rf ~/.venv || true
 fi
-/opt/homebrew/bin/python3 -m venv ~/.venv
+/opt/homebrew/bin/python3.13 -m venv ~/.venv
 source ~/.venv/bin/activate
 python -m ensurepip --upgrade
 pip install --upgrade pip

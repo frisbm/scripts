@@ -22,7 +22,7 @@
     "zsh-syntax-highlighting",
     "derailed/k9s/k9s"
   ],
-  "brewcask": ["google-cloud-sdk", "iterm2"],
+  "brewcask": ["google-cloud-sdk"],
   "go": [
     "golang.org/x/tools/cmd/goimports",
     "github.com/oligot/go-mod-upgrade",

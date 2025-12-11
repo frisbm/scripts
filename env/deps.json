@@ -57,7 +57,8 @@
     "isort",
     "pyarrow",
     "polars[numpy,fsspec,pandas,iceberg]",
-    "httpx"
+    "httpx",
+    "pre-commit"
   ],
   "jupyter": ["jupyterlab_code_formatter"],
   "sdk": ["java 17.0.14-tem", "scala 2.13.16"],

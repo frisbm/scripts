@@ -379,6 +379,16 @@ Conclude with a clear stance:
 * `🟡 Merge with caution` (explain what must be addressed vs what’s optional)
 * `🔴 Not ready to merge` (summarize blockers)
 
+
+#### 7. Risk Assessment
+
+A table summarizing the most important issues:
+
+| ID  | Severity | File / Area         | Summary                        |
+| --- | -------- | ------------------- | ------------------------------ |
+| I-1 | Blocker  | `path/to/file.ext`  | Short description of the issue |
+| I-2 | High     | `path/to/other.ext` | Short description              |
+
 ---
 
 ### 🧩 Notes for the Assistant

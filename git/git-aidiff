@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -Eeuo pipefail
 
 REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
@@ -7,7 +6,17 @@ BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
 SAFE_BRANCH_NAME="$(echo "$BRANCH_NAME" | sed 's/[^A-Za-z0-9._-]/_/g')"
 OUTFILE="/tmp/diff-${REPO_NAME}-${SAFE_BRANCH_NAME}.json"
 
-git diff --no-color --output-indicator-new="+" --output-indicator-old="-" main...HEAD \
+declare -a EXCLUDE_SPECS=()
+
+# Populate excludes in the CURRENT shell (no pipeline subshell)
+while IFS= read -r f; do
+  # output: path: linguist-generated: true|false|unspecified
+  if git check-attr linguist-generated -- "$f" | grep -q ': true$'; then
+    EXCLUDE_SPECS+=(":(exclude)$f")
+  fi
+done < <(git diff --name-only main...HEAD --)
+
+git diff --no-color --output-indicator-new="+" --output-indicator-old="-" main...HEAD -- . "${EXCLUDE_SPECS[@]}" \
   | jq -R -s '
     split("\n")
     | reduce .[] as $line (
@@ -31,14 +40,11 @@ git diff --no-color --output-indicator-new="+" --output-indicator-old="-" main..
         end
       )
       | (if .current != null then .out + [ .current ] else .out end)
-      # Post-process each diff to clean it up
       | map(
           .diff |= (
             split("\n")
-            # Drop the "No newline at end of file" noise
             | map(select(. != "\\ No newline at end of file"))
             | join("\n")
-            # Remove any trailing newline
             | rtrimstr("\n")
           )
         )

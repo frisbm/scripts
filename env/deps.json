@@ -28,7 +28,8 @@
     "golang.org/x/tools/cmd/goimports",
     "github.com/oligot/go-mod-upgrade",
     "github.com/bokwoon95/wgo",
-    "github.com/segmentio/golines"
+    "github.com/segmentio/golines",
+    "golang.org/x/tools/gopls"
   ],
   "gcloud": [
     "beta",

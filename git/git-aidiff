@@ -16,7 +16,21 @@ while IFS= read -r f; do
   fi
 done < <(git diff --name-only main...HEAD --)
 
-git diff --no-color --output-indicator-new="+" --output-indicator-old="-" main...HEAD -- . "${EXCLUDE_SPECS[@]}" \
+DIFF_ARGS=(
+  --no-color
+  --output-indicator-new="+"
+  --output-indicator-old="-"
+  main...HEAD
+  --
+  .
+)
+
+# Only append excludes if we have any (avoids nounset/unbound edge cases)
+if ((${#EXCLUDE_SPECS[@]})); then
+  DIFF_ARGS+=("${EXCLUDE_SPECS[@]}")
+fi
+
+git diff "${DIFF_ARGS[@]}" \
   | jq -R -s '
     split("\n")
     | reduce .[] as $line (

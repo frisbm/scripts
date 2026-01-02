@@ -8,13 +8,19 @@ OUTFILE="/tmp/diff-${REPO_NAME}-${SAFE_BRANCH_NAME}.json"
 
 declare -a EXCLUDE_SPECS=()
 
-# Populate excludes in the CURRENT shell (no pipeline subshell)
-while IFS= read -r f; do
-  # output: path: linguist-generated: true|false|unspecified
-  if git check-attr linguist-generated -- "$f" | grep -q ': true$'; then
-    EXCLUDE_SPECS+=(":(exclude)$f")
-  fi
-done < <(git diff --name-only main...HEAD --)
+# Parse .gitattributes for linguist-generated=true patterns
+if [[ -f .gitattributes ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip comments and empty lines
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Check if line has linguist-generated=true
+    if [[ "$line" =~ linguist-generated=true ]]; then
+      # Extract the pattern (first field)
+      pattern=$(awk '{print $1}' <<< "$line")
+      EXCLUDE_SPECS+=(":(exclude)$pattern")
+    fi
+  done < .gitattributes
+fi
 
 DIFF_ARGS=(
   --no-color
@@ -25,7 +31,6 @@ DIFF_ARGS=(
   .
 )
 
-# Only append excludes if we have any (avoids nounset/unbound edge cases)
 if ((${#EXCLUDE_SPECS[@]})); then
   DIFF_ARGS+=("${EXCLUDE_SPECS[@]}")
 fi

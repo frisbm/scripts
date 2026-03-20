@@ -1,72 +1,248 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+BASE_REF="${1:-main}"
+COMPARE_REF="${2:-HEAD}"
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_NAME="$(basename "$REPO_ROOT")"
 BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
-SAFE_BRANCH_NAME="$(echo "$BRANCH_NAME" | sed 's/[^A-Za-z0-9._-]/_/g')"
+SAFE_BRANCH_NAME="$(printf '%s' "$BRANCH_NAME" | sed 's/[^A-Za-z0-9._-]/_/g')"
 OUTFILE="/tmp/diff-${REPO_NAME}-${SAFE_BRANCH_NAME}.json"
+RANGE="${BASE_REF}...${COMPARE_REF}"
 
-declare -a EXCLUDE_SPECS=()
+cd "$REPO_ROOT"
 
-# Parse .gitattributes for linguist-generated=true patterns
-if [[ -f .gitattributes ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-    # Skip comments and empty lines
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    # Check if line has linguist-generated=true
-    if [[ "$line" =~ linguist-generated=true ]]; then
-      # Extract the pattern (first field)
-      pattern=$(awk '{print $1}' <<< "$line")
-      EXCLUDE_SPECS+=(":(exclude)$pattern")
-    fi
-  done < .gitattributes
+NAME_STATUS_TMP="$(mktemp)"
+NUMSTAT_TMP="$(mktemp)"
+PATCH_TMP="$(mktemp)"
+CHANGED_PATHS_TMP="$(mktemp)"
+ATTR_TMP="$(mktemp)"
+
+cleanup() {
+  rm -f "$NAME_STATUS_TMP" "$NUMSTAT_TMP" "$PATCH_TMP" "$CHANGED_PATHS_TMP" "$ATTR_TMP"
+}
+trap cleanup EXIT
+
+git diff --name-status --find-renames "$RANGE" -- . > "$NAME_STATUS_TMP"
+git diff --numstat --find-renames "$RANGE" -- . > "$NUMSTAT_TMP"
+git diff --no-color --find-renames --output-indicator-new="+" --output-indicator-old="-" "$RANGE" -- . > "$PATCH_TMP"
+
+if [[ -s "$NAME_STATUS_TMP" ]]; then
+  awk -F'\t' '
+    {
+      status = $1
+      if (status ~ /^R[0-9]*$/) {
+        print $3
+      } else if (NF >= 2) {
+        print $2
+      }
+    }
+  ' "$NAME_STATUS_TMP" | sort -u > "$CHANGED_PATHS_TMP"
+
+  if [[ -s "$CHANGED_PATHS_TMP" ]]; then
+    git check-attr linguist-generated --stdin < "$CHANGED_PATHS_TMP" \
+      | awk -F': ' '
+          {
+            path=$1
+            value=$3
+            generated = (value == "true" ? "true" : "false")
+            print path "\t" generated
+          }
+        ' > "$ATTR_TMP"
+  else
+    : > "$ATTR_TMP"
+  fi
+else
+  : > "$ATTR_TMP"
 fi
 
-DIFF_ARGS=(
-  --no-color
-  --output-indicator-new="+"
-  --output-indicator-old="-"
-  main...HEAD
-  --
-  .
-)
+python3 - "$REPO_NAME" "$BRANCH_NAME" "$BASE_REF" "$COMPARE_REF" \
+  "$NAME_STATUS_TMP" "$NUMSTAT_TMP" "$PATCH_TMP" "$ATTR_TMP" "$OUTFILE" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-if ((${#EXCLUDE_SPECS[@]})); then
-  DIFF_ARGS+=("${EXCLUDE_SPECS[@]}")
-fi
+repo, branch, base_ref, compare_ref, name_status_file, numstat_file, patch_file, attr_file, outfile = sys.argv[1:10]
 
-git diff "${DIFF_ARGS[@]}" \
-  | jq -R -s '
-    split("\n")
-    | reduce .[] as $line (
-        {current: null, out: []};
-        if ($line | startswith("diff --git "))
-        then
-          (if .current != null then .out += [ .current ] else . end)
-          | .current = {
-              filepath: (
-                $line
-                | capture("diff --git a/(?<a>[^ ]+) b/(?<b>[^ ]+)").b
-              ),
-              diff: "\($line)\n"
+def ext_of(path: str) -> str:
+    name = Path(path).name
+    if "." not in name:
+        return ""
+    return name.rsplit(".", 1)[-1].lower()
+
+def status_rank(status: str) -> int:
+    return {
+        "modified": 0,
+        "renamed": 1,
+        "added": 2,
+        "deleted": 3,
+        "type_changed": 4,
+        "unmerged": 5,
+    }.get(status, 6)
+
+name_map = {}
+with open(name_status_file, "r", encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.rstrip("\n")
+        if not line:
+            continue
+        parts = line.split("\t")
+        raw_status = parts[0]
+
+        if raw_status.startswith("R") and len(parts) >= 3:
+            old_path = parts[1]
+            path = parts[2]
+            name_map[path] = {
+                "path": path,
+                "old_path": old_path,
+                "status": "renamed",
             }
-        else
-          if .current != null then
-            .current.diff += "\($line)\n"
-          else
-            .
-          end
-        end
-      )
-      | (if .current != null then .out + [ .current ] else .out end)
-      | map(
-          .diff |= (
-            split("\n")
-            | map(select(. != "\\ No newline at end of file"))
-            | join("\n")
-            | rtrimstr("\n")
-          )
-        )
-  ' > "$OUTFILE"
+        elif len(parts) >= 2:
+            path = parts[1]
+            if raw_status == "A":
+                status = "added"
+                old_path = None
+            elif raw_status == "D":
+                status = "deleted"
+                old_path = path
+            elif raw_status == "M":
+                status = "modified"
+                old_path = path
+            elif raw_status == "T":
+                status = "type_changed"
+                old_path = path
+            elif raw_status == "U":
+                status = "unmerged"
+                old_path = path
+            else:
+                status = "modified"
+                old_path = path
+
+            name_map[path] = {
+                "path": path,
+                "old_path": old_path,
+                "status": status,
+            }
+
+num_map = {}
+with open(numstat_file, "r", encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.rstrip("\n")
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+
+        add_s, del_s, path = parts[0], parts[1], parts[-1]
+        is_binary = add_s == "-" or del_s == "-"
+        additions = 0 if add_s == "-" else int(add_s)
+        deletions = 0 if del_s == "-" else int(del_s)
+
+        num_map[path] = {
+            "additions": additions,
+            "deletions": deletions,
+            "is_binary": is_binary,
+        }
+
+attr_map = {}
+with open(attr_file, "r", encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.rstrip("\n")
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) != 2:
+            continue
+        path, generated = parts
+        attr_map[path] = generated.lower() == "true"
+
+patch_files = []
+current = None
+
+with open(patch_file, "r", encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.rstrip("\n")
+        if line.startswith("diff --git a/") and " b/" in line:
+            if current is not None:
+                current["patch"] = "\n".join(current["patch_lines"])
+                del current["patch_lines"]
+                patch_files.append(current)
+
+            rest = line[len("diff --git a/"):]
+            try:
+                a_path, b_path = rest.split(" b/", 1)
+            except ValueError:
+                current = None
+                continue
+
+            current = {
+                "path": b_path,
+                "old_path": a_path,
+                "patch_lines": [line],
+            }
+        elif current is not None:
+            current["patch_lines"].append(line)
+
+if current is not None:
+    current["patch"] = "\n".join(current["patch_lines"])
+    del current["patch_lines"]
+    patch_files.append(current)
+
+files = []
+for pf in patch_files:
+    path = pf["path"]
+    is_generated = attr_map.get(path, False)
+    if is_generated:
+        continue
+
+    ns = name_map.get(path, {
+        "path": path,
+        "old_path": pf.get("old_path"),
+        "status": "modified",
+    })
+    st = num_map.get(path, {
+        "additions": 0,
+        "deletions": 0,
+        "is_binary": False,
+    })
+
+    files.append({
+        "path": ns["path"],
+        "old_path": ns["old_path"],
+        "status": ns["status"],
+        "is_binary": st["is_binary"],
+        "is_generated": False,
+        "extension": ext_of(ns["path"]),
+        "additions": st["additions"],
+        "deletions": st["deletions"],
+        "patch_included": not st["is_binary"],
+        "patch": None if st["is_binary"] else pf["patch"],
+    })
+
+files.sort(key=lambda f: (
+    status_rank(f["status"]),
+    -(f["additions"] + f["deletions"]),
+    f["path"],
+))
+
+result = {
+    "repo": repo,
+    "branch": branch,
+    "base_ref": base_ref,
+    "compare_ref": compare_ref,
+    "summary": {
+        "files_changed": len(files),
+        "additions": sum(f["additions"] for f in files),
+        "deletions": sum(f["deletions"] for f in files),
+    },
+    "files": files,
+}
+
+with open(outfile, "w", encoding="utf-8") as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+PY
 
 echo "Wrote diff JSON to $OUTFILE"

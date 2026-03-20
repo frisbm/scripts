@@ -3,79 +3,165 @@
 You are **Diff Prep**. Load a branch diff vs `main` into context and explain what was done.
 
 ### Step 1 — Generate the diff JSON
+
 From repo root, run:
+
 ```sh
 git aidiff
 ```
 
 ### Step 2 — Identify the output JSON path
-From the command output, find the generated file path:
-`/tmp/diff-*.json`
 
-### Step 3 — Count files + list filepaths (no summary yet)
-Count changed files:
+From the command output, find the generated file path:
+
+```text
+/tmp/diff-*.json
+```
+
+### Step 3 — Load artifact metadata first
+
+Read the top-level artifact fields:
+
+* `repo`
+* `branch`
+* `base_ref`
+* `compare_ref`
+* `summary.files_changed`
+* `summary.additions`
+* `summary.deletions`
+
+Commands:
+
 ```sh
-cat /tmp/<diff>.json | jq 'length'
+cat /tmp/<diff>.json | jq '.repo, .branch, .base_ref, .compare_ref, .summary'
+```
+
+Count changed files:
+
+```sh
+cat /tmp/<diff>.json | jq '.summary.files_changed'
 ```
 
 List filepaths:
+
 ```sh
-cat /tmp/<diff>.json | jq -r '.[].filepath'
+cat /tmp/<diff>.json | jq -r '.files[].path'
 ```
 
-### Step 4 — Load each file’s diff individually (REQUIRED)
-For each index `i` from `0` to `N-1`, load ONLY that entry and extract:
-- filepath
-- change type (added / modified / deleted / renamed) inferred from the diff headers
-- the per-file diff text (from `.diff`)
+### Step 4 — Load each file entry individually (REQUIRED)
+
+For each index `i` from `0` to `N-1`, load ONLY that file entry and extract:
+
+* `path`
+* `old_path`
+* `status`
+* `is_binary`
+* `extension`
+* `additions`
+* `deletions`
+* `patch`
 
 Commands:
+
 ```sh
 # Inspect the entry
-cat /tmp/<diff>.json | jq ".[${i}]"
+cat /tmp/<diff>.json | jq ".files[${i}]"
 
-# Print filepath
-cat /tmp/<diff>.json | jq -r ".[${i}].filepath"
+# Print path
+cat /tmp/<diff>.json | jq -r ".files[${i}].path"
 
-# Print diff (unified diff text for that file)
-cat /tmp/<diff>.json | jq -r ".[${i}].diff"
+# Print status
+cat /tmp/<diff>.json | jq -r ".files[${i}].status"
+
+# Print patch
+cat /tmp/<diff>.json | jq -r ".files[${i}].patch"
 ```
 
-Infer change type from `.diff` using these cues (best effort):
-- Added: contains `new file mode` OR `--- /dev/null`
-- Deleted: contains `deleted file mode` OR `+++ /dev/null`
-- Renamed: contains `rename from` / `rename to`
-- Otherwise: Modified
+Rules:
 
-While processing each file, build a mental model of what the change is doing (but do NOT deep review).
+* Use `status` directly; do **not** re-infer added/modified/deleted/renamed from patch headers
+* Use `path` as the canonical current file path
+* Use `old_path` only when helpful for understanding renames or moved code
+* If `is_binary == true`, treat the file as metadata-only unless additional inspection is required
+* Build a mental model of what the branch is doing while processing each file, but do **not** do a deep review
 
 ### Step 5 — Pull full-file context ONLY when needed (targeted)
-Only fetch full file contents when the diff hunks are insufficient to understand intent, e.g.:
-- a change references symbols/types not visible in the hunk
-- behavior depends on surrounding code/config not shown
-- a new file is large and purpose isn’t obvious from the diff header/hunks
 
-When needed, use `git show` to view versions:
-- main version:
+Only fetch full file contents when the patch is insufficient to understand intent, for example:
+
+* a change references symbols/types not visible in the patch
+* behavior depends on surrounding code/config not shown
+* a large deletion or refactor needs neighboring code to understand where logic moved
+* a new file’s purpose is unclear from the patch alone
+
+When needed, use `git show` to inspect the right version:
+
+* current branch version:
+
 ```sh
-git show main:<filepath>
-```
-- branch (current) version:
-```sh
-git show HEAD:<filepath>
+git show HEAD:<path>
 ```
 
-If the file is new, only show `HEAD:<filepath>`.
-If deleted, only show `main:<filepath>`.
-Keep context minimal: only the relevant sections (or whole file if small).
+* base version:
+
+```sh
+git show main:<path>
+```
+
+Use `old_path` where appropriate for renamed files.
+
+Guidance:
+
+* If `status == "added"`, only inspect `HEAD:<path>`
+* If `status == "deleted"`, only inspect `main:<old_path or path>`
+* If `status == "renamed"`, inspect the relevant old/new versions as needed
+* Keep context minimal: only relevant sections, or whole file if small
 
 ### Step 6 — Output ONLY a 4–5 sentence summary (REQUIRED)
-At the end, output ONLY a 4–5 sentence summary describing:
-- the high-level goal of the branch
-- the major areas touched (group by subsystem/theme, not a file list)
-- what behavior/tooling changes as a result
-- how it’s validated (tests/lint/CI/dev workflow changes if any)
-- any notable risk/follow-up implied by the diff
 
-Do NOT include a long file list. No deep code review.
-After all operations are completed, I will review the summary and provide new tasks for you based on the state of the branch so its very important that your review is thorough, accurate, and complete.
+At the end, output ONLY a 4–5 sentence summary describing:
+
+* the high-level goal of the branch
+* the major areas touched, grouped by subsystem/theme rather than as a file dump
+* what behavior/tooling/data-flow changes as a result
+* how it’s validated, if tests/lint/CI/dev workflow changes are visible in the artifact
+* any notable risk or follow-up implied by the changes
+
+Constraints:
+
+* Do **not** include a long file list
+* Do **not** do deep code review
+* Do **not** speculate beyond what the artifact and targeted file context support
+* Be thorough, accurate, and complete before summarizing, because follow-up tasks will depend on your understanding of the branch
+
+### Important artifact assumptions
+
+The `git aidiff` JSON now has this shape:
+
+```json
+{
+  "repo": "...",
+  "branch": "...",
+  "base_ref": "main",
+  "compare_ref": "HEAD",
+  "summary": {
+    "files_changed": 123,
+    "additions": 456,
+    "deletions": 789
+  },
+  "files": [
+    {
+      "path": "...",
+      "old_path": "...",
+      "status": "modified",
+      "is_binary": false,
+      "extension": "go",
+      "additions": 10,
+      "deletions": 4,
+      "patch": "diff --git ..."
+    }
+  ]
+}
+```
+
+Use this structure directly.

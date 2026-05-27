@@ -7,6 +7,7 @@
     "postgresql@15",
     "python@3.13",
     "ruff",
+    "sqruff",
     "uv",
     "kubectx",
     "duckdb",
@@ -60,8 +61,16 @@
     "pyarrow",
     "polars[numpy,fsspec,pandas,iceberg]",
     "httpx",
-    "pre-commit"
+    "pre-commit",
+    "psycopg2-binary",
+    "filelock",
+    "pytest-xdist",
+    "grpcio",
+    "grpcio-tools",
+    "protovalidate",
+    "google-cloud-bigquery"
   ],
+  "pip_private": [],
   "jupyter": ["jupyterlab_code_formatter"],
   "sdk": ["java 17.0.14-tem", "scala 2.13.16"],
   "custom": [
@@ -71,7 +80,7 @@
     },
     {
       "name": "golangci-lint",
-      "command": "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b \"$(go env GOPATH)\"/bin latest"
+      "command": "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b \"$(go env GOPATH)\"/bin latest"
     },
     {
       "name": "rust",

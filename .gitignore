@@ -11,6 +11,9 @@ ehthumbs.db
 ehthumbs_vista.db
 [Tt]humbs.db
 
+# Private deps (machine/work specific, scaffolded by env/setup.sh)
+deps.private.json
+
 # Backups
 *.bak
 

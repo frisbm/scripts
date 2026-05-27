@@ -4,6 +4,7 @@ trap 'echo "❌ Failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # ---- knobs (same defaults as newer script) ----
 : "${DEPS_FILE:=./deps.json}"
+: "${PRIVATE_DEPS_FILE:=./deps.private.json}"
 : "${DRY_RUN:=0}"
 : "${QUIET:=1}"
 : "${PIP_VENV:=$HOME/.venv}"
@@ -16,11 +17,27 @@ trap 'echo "❌ Failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 run() { echo "+ $*" >&2; [[ "$DRY_RUN" -eq 1 ]] || "$@"; }
 have() { command -v "$1" &>/dev/null; }
-deps() { jq -c --raw-output ".${1}[]? // empty" "$DEPS_FILE"; }
+# Emit entries for a dep kind from the public file first, then the private file.
+# Private deps for each kind run in lockstep, after the public ones.
+deps() {
+  jq -c --raw-output ".${1}[]? // empty" "$DEPS_FILE"
+  [[ -f "$PRIVATE_DEPS_FILE" ]] && jq -c --raw-output ".${1}[]? // empty" "$PRIVATE_DEPS_FILE"
+}
 
 # ---- deps.json required + valid ----
 [[ -f "$DEPS_FILE" ]] || { echo "ERROR: deps file not found: $DEPS_FILE" >&2; exit 1; }
 run jq empty "$DEPS_FILE" >/dev/null
+
+# ---- private deps (gitignored): scaffold a blank template, then validate ----
+if [[ ! -f "$PRIVATE_DEPS_FILE" ]]; then
+  echo "Creating blank private deps template at $PRIVATE_DEPS_FILE ..." >&2
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "+ jq 'map_values([])' \"$DEPS_FILE\" > \"$PRIVATE_DEPS_FILE\"" >&2
+  else
+    jq 'map_values([])' "$DEPS_FILE" > "$PRIVATE_DEPS_FILE"
+  fi
+fi
+[[ -f "$PRIVATE_DEPS_FILE" ]] && run jq empty "$PRIVATE_DEPS_FILE" >/dev/null
 
 # ---- Xcode CLI tools (macOS) ----
 if have xcode-select && ! xcode-select -p &>/dev/null; then
@@ -180,12 +197,47 @@ else
 fi
 
 echo "Installing/upgrading pip packages..." >&2
-PIP_PKGS="$(jq -r '.pip[]? // empty' "$DEPS_FILE" | tr '\n' ' ')"
+PIP_PKGS="$(deps pip | tr '\n' ' ')"
 if [[ -n "$PIP_PKGS" ]]; then
   [[ "$DRY_RUN" -eq 1 ]] && echo "+ pip install -qU $PIP_PKGS" >&2 || pip install -qU $PIP_PKGS
 else
   echo "No pip packages listed." >&2
 fi
+
+# ---- private pip packages (e.g. Cloudsmith; entries live in gitignored private deps) ----
+# Each entry is an object:
+#   { "name": "pkg", "index_url": "https://user:token@host/.../simple/",
+#     "constraints": ["protobuf>=7.0.0"],   # optional: installed/upgraded first
+#     "pth_dir": "helmhealth/sdk",          # optional: nested dir to add to sys.path via a .pth
+#     "verify": "python -c '...'" }          # optional: sanity check, fails the run if it errors
+echo "Installing private pip packages..." >&2
+deps pip_private | while IFS= read -r entry; do
+  [[ -n "$entry" ]] || continue
+  name="$(jq -r '.name // empty' <<<"$entry")"
+  index_url="$(jq -r '.index_url // empty' <<<"$entry")"
+  [[ -n "$name" && -n "$index_url" ]] || { echo "ERROR: invalid pip_private entry (need name + index_url): $entry" >&2; exit 1; }
+
+  constraints="$(jq -r '.constraints[]? // empty' <<<"$entry" | tr '\n' ' ')"
+  pth_dir="$(jq -r '.pth_dir // empty' <<<"$entry")"
+  verify="$(jq -r '.verify // empty' <<<"$entry")"
+
+  echo "→ private pip: $name" >&2
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    [[ -n "$constraints" ]] && echo "+ pip install -U $constraints" >&2
+    echo "+ pip install --upgrade $name --index-url <redacted>" >&2
+    [[ -n "$pth_dir" ]] && echo "+ write <site-packages>/$name.pth -> <site-packages>/$pth_dir" >&2
+    [[ -n "$verify" ]] && echo "+ $verify" >&2
+  else
+    [[ -n "$constraints" ]] && pip install -U $constraints
+    pip install --upgrade "$name" --index-url "$index_url"
+    # pip drops the .pth on every reinstall, so (re)write it each run.
+    if [[ -n "$pth_dir" ]]; then
+      SITE="$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")"
+      echo "$SITE/$pth_dir" > "$SITE/$name.pth"
+    fi
+    [[ -n "$verify" ]] && bash -c "$verify"
+  fi
+done
 
 # ---- jupyter extensions ----
 if have jupyter; then

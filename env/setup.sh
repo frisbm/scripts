@@ -207,9 +207,11 @@ fi
 # ---- private pip packages (e.g. Cloudsmith; entries live in gitignored private deps) ----
 # Each entry is an object:
 #   { "name": "pkg", "index_url": "https://user:token@host/.../simple/",
-#     "constraints": ["protobuf>=7.0.0"],   # optional: installed/upgraded first
-#     "pth_dir": "helmhealth/sdk",          # optional: nested dir to add to sys.path via a .pth
 #     "verify": "python -c '...'" }          # optional: sanity check, fails the run if it errors
+# PyPI is added as an extra index so the private package's public dependencies
+# (grpcio, protobuf, ...) resolve — the Cloudsmith index only serves the package
+# itself. The package is expected to declare its own runtime constraints and to
+# ship any required .pth/site config in its wheel.
 echo "Installing private pip packages..." >&2
 deps pip_private | while IFS= read -r entry; do
   [[ -n "$entry" ]] || continue
@@ -217,24 +219,14 @@ deps pip_private | while IFS= read -r entry; do
   index_url="$(jq -r '.index_url // empty' <<<"$entry")"
   [[ -n "$name" && -n "$index_url" ]] || { echo "ERROR: invalid pip_private entry (need name + index_url): $entry" >&2; exit 1; }
 
-  constraints="$(jq -r '.constraints[]? // empty' <<<"$entry" | tr '\n' ' ')"
-  pth_dir="$(jq -r '.pth_dir // empty' <<<"$entry")"
   verify="$(jq -r '.verify // empty' <<<"$entry")"
 
   echo "→ private pip: $name" >&2
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    [[ -n "$constraints" ]] && echo "+ pip install -U $constraints" >&2
-    echo "+ pip install --upgrade $name --index-url <redacted>" >&2
-    [[ -n "$pth_dir" ]] && echo "+ write <site-packages>/$name.pth -> <site-packages>/$pth_dir" >&2
+    echo "+ pip install --upgrade $name --index-url <redacted> --extra-index-url https://pypi.org/simple/" >&2
     [[ -n "$verify" ]] && echo "+ $verify" >&2
   else
-    [[ -n "$constraints" ]] && pip install -U $constraints
-    pip install --upgrade "$name" --index-url "$index_url"
-    # pip drops the .pth on every reinstall, so (re)write it each run.
-    if [[ -n "$pth_dir" ]]; then
-      SITE="$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")"
-      echo "$SITE/$pth_dir" > "$SITE/$name.pth"
-    fi
+    pip install --upgrade "$name" --index-url "$index_url" --extra-index-url https://pypi.org/simple/
     [[ -n "$verify" ]] && bash -c "$verify"
   fi
 done

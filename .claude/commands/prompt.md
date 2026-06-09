@@ -249,13 +249,11 @@ Just share your rough prompt and I'll handle the optimization and back it up wit
 
 REMEMBER: If you have questions about anything being asked of you, feel free to ask using the `AskUserQuestion` tool.
 
-THE FINAL PROMPT SHOULD BE IN THE FOLLOWING FORMAT BETWEEN THE START AND END OUTPUT TEMPLATE MARKERS, DO NOT INCLUDE ANYTHING ELSE IN THE OUTPUT.
+THE FINAL PROMPT SHOULD BE IN THE FOLLOWING FORMAT, DO NOT INCLUDE ANYTHING ELSE IN THE OUTPUT:
 
---- START OUTPUT TEMPLATE ---
 ULTRATHINK
 [Single, fully executable prompt for a clean Claude session. Must include: Role, Goals, Context (repo + external facts with citations if used), Inputs & Assumptions, Constraints, Deliverables, Output Formats/Schemas, Reasoning Scaffolds (selected techniques), Tool/Resource Usage, PLAN.md directive (create/overwrite, structure, and live updates), Verification & Acceptance Tests, Risk & Rollback, Observability/Logging (if relevant), Success Criteria, and a Final QA checklist. No ambiguity, no TODOs, no placeholders.
 
 
 ### IMPORTANT:
 DO NOT PAUSE. DO NOT STOP. CREATE THE PLAN AND BEGIN IMPLEMENTATION IMMEDIATELY. DO NOT STOP WORKING UNTIL YOU HAVE ACCOMPLISHED EVERYTHING IN THE PLAN.
---- END OUTPUT TEMPLATE ---

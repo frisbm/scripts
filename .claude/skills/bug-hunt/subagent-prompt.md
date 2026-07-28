@@ -18,9 +18,33 @@ outright and no other agent writes into them. Therefore:
 - **Add your proving tests to the standard test file for the code under
   test**: a bug in `foo.go` goes in `foo_test.go` in the **same package**,
   which you create only if it doesn't already exist. Write ordinary Go
-  tests that match the package's existing conventions — no separate
-  "bughunt" files, no special naming. Append; never redefine existing
+  tests that match the package's existing conventions. Append; reuse the
+  fakes, mocks and helpers already in that file — never redefine existing
   helpers or tests.
+
+  **The only test file name you may ever create is `<source>_test.go`,
+  exactly matching an existing source file in that directory.** Creating
+  any other test file is a protocol violation, no matter how well it
+  describes your finding. Specifically forbidden — this is the failure
+  mode this rule exists to stop, and "it isn't a *bughunt* file" is not an
+  exemption:
+
+  `*_prove_test.go`, `*_verify_test.go`, `*_repro_test.go`,
+  `*_reproduction_test.go`, `*_audit_test.go`, `*_hazard_test.go`,
+  `*_bug_test.go`, `*_bughunt_test.go`, `*_regression_test.go`,
+  `*_scenario_test.go`, `*_<TICKET>_test.go` (e.g. `foo_eng1234_test.go`),
+  and a new `*_integration_test.go` beside an existing `<source>_test.go`.
+
+  If the source file you'd match has no test file yet, create exactly
+  `<source>_test.go` and nothing else.
+
+- **Bug spans several sources (common after call-path tracing).** File the
+  test against the source whose function your test actually *calls* — the
+  entry point you invoke in the test body, not the file where you believe
+  the root cause lives. Note the root-cause `file:line` in the finding's
+  `location` field instead. Never split one finding across two test files,
+  and never create a new file because the bug "doesn't belong to any one
+  source".
 - **Never run bare `go test ./...`** across a module you may share with
   another subagent — you'd hit their newly-added (currently failing) tests
   and chase phantom bugs. Run only the **specific package(s) you own**,
@@ -102,14 +126,17 @@ and will pass once the bug is fixed, leaving a permanent regression guard.
   location, or "got X, want Y" with concrete values. Include this
   prediction in the finding.
 - Place it in the **standard test file for the code under test** (`foo.go`
-  → `foo_test.go`, same package; create the file only if absent). Follow
-  the package's existing `_test.go` conventions and the `shared/testutil` /
+  → `foo_test.go`, same package; create the file only if absent, and only
+  under that exact name — see the forbidden-name list above). Follow the
+  package's existing `_test.go` conventions and the `shared/testutil` /
   `test/testutil` helpers so it reads like the rest of the suite.
 - Name it like the package's other tests — describing the function and
   scenario, e.g. `TestProcessClaim_NilPayloadReturnsError`. Give it a
   normal doc comment describing the behavior under test. **No `TestBug_` /
   "bug hunt" naming and no `BUGHUNT` marker** — it must be indistinguishable
-  from any other test.
+  from any other test. The test *function* name must likewise carry no
+  ticket id, bug slug, `_Repro`, `_Prove`, `_Hazard`, or your `{{SLUG}}`
+  tag.
 - Run from inside the module dir (each service and `shared` is its own
   module), scoped to your package and (while iterating) the test's real
   name, with `-count=1 -mod=vendor`; add `-race` for concurrency:
@@ -133,6 +160,35 @@ and will pass once the bug is fixed, leaving a permanent regression guard.
 fault-injection hooks, flags, or test-only endpoints to any service or
 shared code. Only new/modified `_test.go` files are allowed. If a bug
 can't be proven without touching prod code, report it unproven.
+
+## Placement self-check (MANDATORY — run before you write your findings file)
+
+You are not done until this passes. For **every directory you touched**,
+run this from the repo root and fix anything it prints:
+
+```bash
+for d in <each dir you added tests to>; do
+  for t in "$d"/*_test.go; do
+    [ -e "$t" ] || continue
+    src="${t%_test.go}.go"
+    [ -f "$src" ] || echo "STRAY TEST FILE: $t (no matching $src)"
+  done
+done
+```
+
+Any `STRAY TEST FILE` line means you created a file you were not allowed to
+create. **Fix it before finishing**: move your tests into the correct
+`<source>_test.go` (creating it only if that exact name is absent), delete
+the stray file, and re-run your tests to confirm they still fail as
+predicted. Do not report the stray as a known issue and move on — resolving
+it is part of the task.
+
+Pre-existing strays you did not create are not yours to fix: leave them,
+and mention them in one line at the end of your findings file.
+
+Also confirm: no test file name and no test function name you added
+contains a ticket id, `Bug`, `Repro`, `Prove`, `Verify`, `Hazard`, `Audit`,
+`BUGHUNT`, or your `{{SLUG}}` tag.
 
 ## Output contract
 
@@ -166,7 +222,12 @@ End the file with:
 - List of every test you added (test file + test name), noting which files
   you newly created vs. appended to. Since these look like ordinary tests,
   this list is the only record of which currently-failing tests are your
-  deliverables.
+  deliverables. **Every file in the "newly created" column must be
+  `<source>_test.go` for a source file that exists in that same
+  directory** — if one isn't, you have not finished the placement
+  self-check.
+- An explicit line: `Placement self-check: PASS (N dirs, 0 strays)` — or,
+  if you found pre-existing strays you did not create, list them.
 
 Your FINAL RESPONSE in chat must be under 2000 characters: the findings
 file path, counts by severity and status, the coverage statement in one

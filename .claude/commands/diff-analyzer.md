@@ -220,6 +220,18 @@ Rules:
 
 If you cannot prove a suspected issue with the available environment, classify it as a **Concern** and explain what test/check would validate it.
 
+### Test file placement (NON-NEGOTIABLE)
+
+Every source file gets exactly **one** test file. In Go: `foo.go` → `foo_test.go`, same directory, same package. In other languages, the same one-test-file-per-source rule using that ecosystem's convention.
+
+* Put your test in the **existing** `<source>_test.go` for the code under test. Create that file **only if it does not already exist**.
+* **Never** create a per-bug, per-ticket, or per-investigation test file — no `*_prove_test.go`, `*_verify_test.go`, `*_repro_test.go`, `*_bughunt_test.go`, `*_audit_test.go`, `*_<TICKET>_test.go`, and no second `*_integration_test.go` alongside an existing `<source>_test.go`.
+* **Never** encode a ticket id, bug name, or "this investigation" in a test file name or a test function name. Name tests the way the package already names them (e.g. `TestProcessClaim_NilPayloadReturnsError`).
+* If a finding spans several sources, file the test with the source whose function it actually calls.
+* Reuse the fakes, helpers, and table conventions already in that file instead of adding parallel ones.
+
+**Before you finish**, verify for every directory you touched: each `*_test.go` maps to a same-named source file, and no test file name encodes a ticket, bug, or investigation. If a source already had a test file and you added a second one, merge yours into the existing file before reporting.
+
 ---
 
 # Severity model
@@ -286,8 +298,8 @@ When relevant, include a small patch snippet.
 For every finding, list:
 
 * test type: unit / integration / smoke
-* exact file where it should live
-* test name
+* exact file where it should live — this MUST be the existing `<source>_test.go` for the code under test (see "Test file placement"); state explicitly whether that file already existed or you created it
+* test name — must follow the package's existing naming, with no ticket id or bug name in it
 * scenario
 * expected assertion
 * whether it was run

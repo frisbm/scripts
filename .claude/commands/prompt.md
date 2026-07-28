@@ -19,6 +19,14 @@ Only prepend `@` to paths that exist and you are absolutely confident exist and 
 
 IMPORTANT: USE `@` ONLY WHEN NECESSARY AND WHEN YOU ARE ABSOLUTELY CONFIDENT THAT THE PATH EXISTS AND MUST BE FULLY READ INTO THE CONTEXT.
 
+### Test File Placement Rule (STRICT)
+
+Whenever the prompt you emit could cause the implementer to **write or modify tests** — which is nearly every coding prompt, and always true when you invoke acceptance tests, test scaffolds, property-based tests, or proof-by-test — the emitted prompt MUST carry this constraint verbatim in its Constraints (or Hard Rules) section:
+
+> **Test file placement (non-negotiable).** Every source file gets exactly one test file: in Go, `foo.go` → `foo_test.go`, same directory and same package; in other languages, the same one-test-file-per-source rule using that ecosystem's convention. Add tests to the **existing** `<source>_test.go` for the code under test, creating that file only if it does not already exist. Never create a per-ticket, per-bug, or per-investigation test file (`*_prove_test.go`, `*_verify_test.go`, `*_repro_test.go`, `*_audit_test.go`, `*_<TICKET>_test.go`, or a second `*_integration_test.go` beside an existing `<source>_test.go`). Never encode a ticket id, bug name, or investigation in a test file name or test function name — follow the package's existing test naming. If behavior spans several sources, file the test with the source whose function it actually calls. Reuse the fakes and helpers already in that file rather than adding parallel ones. Before finishing, verify every directory touched: each `*_test.go` maps to a same-named source file, and merge any second test file into the existing one.
+
+Do not paraphrase it away, do not shorten it to "follow test conventions", and do not drop it because the task "isn't really about tests". If the target repo has a stricter or different convention that you can see in context, state that convention instead — but the emitted prompt must always pin test file placement explicitly.
+
 ## ULTRATHINK PIPELINE
 
 ### 1) DECONSTRUCT
@@ -81,8 +89,9 @@ IMPORTANT: USE `@` ONLY WHEN NECESSARY AND WHEN YOU ARE ABSOLUTELY CONFIDENT THA
   * Selected prompting techniques embedded (reasoning scaffolds, verification, retrieval instructions, JSON schema).
   * Precise instructions for citations/grounding and refusal rules.
   * Concrete success criteria, acceptance tests, and final QA checklist.
+  * The **Test File Placement Rule** verbatim in Constraints/Hard Rules whenever the prompt can lead to writing or modifying tests, and a matching line in the final QA checklist ("every `*_test.go` maps to a same-named source file; no per-ticket/per-bug test files").
   * Explicit instruction to immediately create/update **`@PLAN.md`** and work against it.
-* Validate with a **Quality Gate** (internal scoring): Coverage, Specificity, Reproducibility, Verification, Safety, and Parsability. If score < 90/100, iterate once automatically within the same output and emit the improved version only.
+* Validate with a **Quality Gate** (internal scoring): Coverage, Specificity, Reproducibility, Verification, Safety, and Parsability. If score < 90/100, iterate once automatically within the same output and emit the improved version only. The gate **fails outright** — regardless of score — if the emitted prompt can lead to writing tests but omits the Test File Placement Rule; add it and re-emit.
 
 ## PROMPTING TOOLKIT (FOR BOTH YOUR PROCESS AND THE PROMPT YOU GENERATE)
 
@@ -183,6 +192,8 @@ IMPORTANT: USE `@` ONLY WHEN NECESSARY AND WHEN YOU ARE ABSOLUTELY CONFIDENT THA
   **Use when:** broad input spaces exist (parsers, validators, encoders).
   **How:** define properties (round-trip, no crashes, constraints hold) and generate random cases.
   **Best practice:** pair with a few hand-picked adversarial cases.
+
+> Any technique in this section that produces tests (PAL/PoT stubs, property-based tests, acceptance tests) must be emitted together with the **Test File Placement Rule** — the generated tests go in the existing `<source>_test.go`, never in a new per-ticket or per-investigation file.
 
 ### Optimization (detailed: when/how)
 

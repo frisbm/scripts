@@ -326,6 +326,20 @@ Timeout: 10 minutes. If exceeded, check how many messages each agent has written
    - **Disagreements** = weigh both sides, make a judgment call, briefly explain your reasoning
    - **Warnings** = address ALL of them, from both agents
 4. Present a brief synthesis to the user (under 10 lines)
-5. Begin implementation
+5. Begin implementation — subject to **Test file placement** below
+
+## Test file placement (NON-NEGOTIABLE)
+
+Applies to the implementation you do in Phase 6, and to any code an agent writes.
+
+Every source file gets exactly **one** test file. In Go: `foo.go` → `foo_test.go`, same directory, same package. In other languages, the same one-test-file-per-source rule using that ecosystem's convention.
+
+- Add tests to the **existing** `<source>_test.go` for the code under test. Create that file **only if it does not already exist**, and only under that exact name.
+- **Never** create a per-ticket, per-bug, or per-debate test file — no `*_prove_test.go`, `*_verify_test.go`, `*_repro_test.go`, `*_audit_test.go`, `*_<TICKET>_test.go`, and no second `*_integration_test.go` beside an existing `<source>_test.go`.
+- **Never** encode a ticket id, bug name, or the debate topic in a test file name or test function name.
+- If the behavior spans several sources, file the test with the source whose function the test actually calls.
+- Reuse the fakes and helpers already in that file instead of adding parallel ones.
+
+Before finishing, verify every directory you touched: each `*_test.go` maps to a same-named source file. Merge any second test file into the existing one.
 
 **Individual messages**: ONLY read numbered messages if FINAL.md files contradict each other on a CRITICAL point and you cannot resolve it from the summaries. This should be genuinely rare — the point of FINAL.md is to save you from reading the full conversation.

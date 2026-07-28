@@ -90,6 +90,14 @@ Use `subagent_type: general-purpose` (they must write and run tests).
   file only if it doesn't exist — matching the package's existing test
   conventions. Because partitions are package-disjoint, no two subagents
   ever edit the same file.
+- **The only test file name a subagent may create is `<source>_test.go`
+  matching an existing source file.** `*_prove_test.go`,
+  `*_repro_test.go`, `*_verify_test.go`, `*_audit_test.go`,
+  `*_<TICKET>_test.go` and friends are forbidden — banning `TestBug_`
+  naming alone is not enough, because a subagent will happily write
+  `foo_nil_repro_test.go` and consider itself compliant. The subagent
+  prompt carries the full forbidden list and a mandatory placement
+  self-check; do not trim either.
 
 ## Verified commands (what subagents run)
 
@@ -154,7 +162,26 @@ hooks, flags, or test-only endpoints in any service or shared code. Only
 new/modified `_test.go` files are allowed. A bug that can only be "proven"
 by editing prod code is reported unproven instead.
 
-## Phase 3 — Final report (in chat, not a file)
+## Phase 3 — Placement audit (before the report)
+
+Subagents self-check, but verify it yourself — a subagent that ignored the
+rule will not tell you. From the repo root, over the whole tree:
+
+```bash
+git status --porcelain | grep '_test\.go$' | awk '{print $NF}' | while read -r t; do
+  src="${t%_test.go}.go"
+  [ -f "$src" ] || echo "STRAY: $t (no matching $src)"
+done
+```
+
+For every `STRAY` line, the tests in that file must be merged into the
+correct `<source>_test.go` and the stray deleted, then that package re-run
+to confirm the tests still fail as predicted. Do this **before** writing the
+report — either fix it yourself or send the owning subagent back. Never
+report a hunt that left stray test files behind, and never resolve it by
+deleting the tests.
+
+## Phase 4 — Final report (in chat, not a file)
 
 Each subagent writes its full findings to
 `tmp/bug-hunt/findings-<slug>.md` and returns only a summary + path

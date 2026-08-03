@@ -88,7 +88,7 @@
     },
     {
       "name": "zvm",
-      "command": "curl https://raw.githubusercontent.com/tristanisham/zvm/master/install.sh | bash"
+      "command": "curl https://raw.githubusercontent.com/tristanisham/zvm/master/install.sh | bash && chmod +x \"${ZVM_INSTALL:-$HOME/.zvm/self}/zvm\""
     },
     {
       "name": "zig",

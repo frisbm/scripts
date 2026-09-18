@@ -145,9 +145,18 @@ export GIT_MERGE_AUTOEDIT=no
 
 # Node ENV ###################################################################################
 export NVM_DIR="$HOME/.nvm"
-# Put the newest installed node on PATH directly; sourcing nvm.sh costs ~1.7s of startup.
+# Put nvm's default version on PATH directly; sourcing nvm.sh costs ~1.7s of startup.
+# Follows the alias chain (default -> lts/* -> lts/krypton -> v24.21.0) by hand,
+# falling back to the newest installed version.
 if [ -d "$NVM_DIR/versions/node" ]; then
-  export PATH="$NVM_DIR/versions/node/$(ls "$NVM_DIR/versions/node" | sort -V | tail -1)/bin:$PATH"
+  _nvm_v="$(cat "$NVM_DIR/alias/default" 2>/dev/null)"
+  while [ -n "$_nvm_v" ] && [ -f "$NVM_DIR/alias/$_nvm_v" ]; do
+    _nvm_v="$(cat "$NVM_DIR/alias/$_nvm_v")"
+  done
+  [ -d "$NVM_DIR/versions/node/$_nvm_v" ] || \
+    _nvm_v="$(ls "$NVM_DIR/versions/node" | sort -V | tail -1)"
+  export PATH="$NVM_DIR/versions/node/$_nvm_v/bin:$PATH"
+  unset _nvm_v
 fi
 # Real nvm loads on first use only.
 nvm() {

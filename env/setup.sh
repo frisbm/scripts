@@ -21,6 +21,19 @@ AUDIT_ONLY=0
 run() { echo "+ $*" >&2; [[ "$DRY_RUN" -eq 1 ]] || "$@"; }
 have() { command -v "$1" &>/dev/null; }
 
+# Source a third-party script without our errexit/ERR trap reacting to its internal
+# probes: gcloud's path.bash.inc runs `readlink`, nvm.sh runs `which node`, and both
+# are expected to fail. Their failures are not ours to report.
+source_quiet() {
+  [[ -r "$1" ]] || return 0
+  set +e
+  trap - ERR
+  # shellcheck disable=SC1090
+  . "$1"
+  set -e
+  trap 'echo "❌ Failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+}
+
 # ---- bootstrap: Xcode CLI, Homebrew, jq ----
 # MUST precede any jq use. Everything below parses deps.json.
 if [[ "$AUDIT_ONLY" -eq 0 ]]; then
@@ -208,26 +221,27 @@ fi
 # ---- gcloud components ----
 # The cask does not put gcloud on PATH; interactively that is done by the oh-my-zsh
 # gcloud plugin, which this bash script never sources.
-[[ -r /opt/homebrew/share/google-cloud-sdk/path.bash.inc ]] && \
-  . /opt/homebrew/share/google-cloud-sdk/path.bash.inc
+source_quiet /opt/homebrew/share/google-cloud-sdk/path.bash.inc
 if have gcloud; then
   echo "Installing gcloud components..." >&2
-  deps gcloud | while IFS= read -r c; do
-    [[ -n "$c" ]] || continue
+  GC_COMPONENTS=()
+  while IFS= read -r c; do [[ -n "$c" ]] && GC_COMPONENTS+=("$c"); done < <(deps gcloud)
+  if [[ "${#GC_COMPONENTS[@]}" -gt 0 ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      echo "+ gcloud components install --quiet $c" >&2
+      echo "+ gcloud components install --quiet ${GC_COMPONENTS[*]}" >&2
     else
-      gcloud components install --quiet "$c" || { echo "ERROR: gcloud component install failed: $c" >&2; exit 1; }
+      gcloud components install --quiet "${GC_COMPONENTS[@]}" \
+        || { echo "ERROR: gcloud component install failed" >&2; exit 1; }
     fi
-  done
+  fi
 else
   echo "gcloud not found; skipping gcloud components (install google-cloud-sdk first)." >&2
 fi
 
 # ---- nvm/node ----
 export NVM_DIR="$HOME/.nvm"
-[[ -s "$NVM_DIR/nvm.sh" ]] && . "$NVM_DIR/nvm.sh"
-[[ -s "$NVM_DIR/bash_completion" ]] && . "$NVM_DIR/bash_completion" || true
+source_quiet "$NVM_DIR/nvm.sh"
+source_quiet "$NVM_DIR/bash_completion"
 
 if have nvm; then
   echo "Installing node versions via nvm..." >&2

@@ -1,5 +1,8 @@
 # ZSH Config
 
+# direnv must run before the p10k instant prompt block.
+(( ${+commands[direnv]} )) && emulate zsh -c "$(direnv export zsh)"
+
 # P10k #######################################################################################
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -131,21 +134,28 @@ export GOPATH=$HOME/golang
 ##############################################################################################
 
 # Path #######################################################################################
-export PATH="$PATH:/$HOME/golang/bin"
-export PATH="$PATH:/$HOME/.bin"
-export PATH="$PATH:/$HOME/.local/bin"
+export PATH="$PATH:$HOME/golang/bin:$HOME/.bin:$HOME/.local/bin"
 ##############################################################################################
 
 
-# Git Config ##################################################################################
+# Git Config #################################################################################
 export GIT_MERGE_AUTOEDIT=no
 ##############################################################################################
 
 
 # Node ENV ###################################################################################
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && nvm use node > /dev/null 2>&1
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+# Put the newest installed node on PATH directly; sourcing nvm.sh costs ~1.7s of startup.
+if [ -d "$NVM_DIR/versions/node" ]; then
+  export PATH="$NVM_DIR/versions/node/$(ls "$NVM_DIR/versions/node" | sort -V | tail -1)/bin:$PATH"
+fi
+# Real nvm loads on first use only.
+nvm() {
+  unset -f nvm
+  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+  nvm "$@"
+}
 ##############################################################################################
 
 
@@ -168,3 +178,7 @@ alias srczsh="source ~/.zshrc"
 #THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+# direnv ####################################################################################
+(( ${+commands[direnv]} )) && emulate zsh -c "$(direnv hook zsh)"
+##############################################################################################

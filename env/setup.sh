@@ -1,77 +1,147 @@
 #!/bin/bash
+# Personal-layer machine setup. Run AFTER the org bootstrap (helmhealth/onboarding-scripts),
+# which installs Homebrew/git/gh/jq/asdf and clones the repos. See README.md.
 set -Eeuo pipefail
 trap 'echo "❌ Failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
-# ---- knobs (same defaults as newer script) ----
+# ---- knobs ----
 : "${DEPS_FILE:=./deps.json}"
 : "${PRIVATE_DEPS_FILE:=./deps.private.json}"
 : "${DRY_RUN:=0}"
-: "${QUIET:=1}"
 : "${PIP_VENV:=$HOME/.venv}"
-: "${PYTHON_BIN:=/opt/homebrew/bin/python3.13}"
 : "${MAX_JOBS:=4}"
-: "${UPGRADE_BREW:=1}"
 : "${RECREATE_VENV:=1}"
-: "${NVM_INSTALL_DEFAULT:=1}"
-: "${GCLOUD_COMPONENTS_INSTALL:=1}"
+# Must match the GOPATH the deployed .zshrc exports, or `go install` writes somewhere
+# that is never on PATH.
+: "${GOPATH_DIR:=$HOME/golang}"
+
+AUDIT_ONLY=0
+[[ "${1:-}" == "--audit" ]] && AUDIT_ONLY=1
 
 run() { echo "+ $*" >&2; [[ "$DRY_RUN" -eq 1 ]] || "$@"; }
 have() { command -v "$1" &>/dev/null; }
-# Emit entries for a dep kind from the public file first, then the private file.
-# Private deps for each kind run in lockstep, after the public ones.
-deps() {
-  jq -c --raw-output ".${1}[]? // empty" "$DEPS_FILE"
-  [[ -f "$PRIVATE_DEPS_FILE" ]] && jq -c --raw-output ".${1}[]? // empty" "$PRIVATE_DEPS_FILE"
-}
 
-# ---- deps.json required + valid ----
-[[ -f "$DEPS_FILE" ]] || { echo "ERROR: deps file not found: $DEPS_FILE" >&2; exit 1; }
-run jq empty "$DEPS_FILE" >/dev/null
+# ---- bootstrap: Xcode CLI, Homebrew, jq ----
+# MUST precede any jq use. Everything below parses deps.json.
+if [[ "$AUDIT_ONLY" -eq 0 ]]; then
+  if have xcode-select && ! xcode-select -p &>/dev/null; then
+    echo "Xcode CLI Tools not found. Triggering install prompt..." >&2
+    run xcode-select --install
+    echo "Re-run after Xcode CLI Tools finish installing (if needed)." >&2
+  fi
 
-# ---- private deps (gitignored): scaffold a blank template, then validate ----
-if [[ ! -f "$PRIVATE_DEPS_FILE" ]]; then
-  echo "Creating blank private deps template at $PRIVATE_DEPS_FILE ..." >&2
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "+ jq 'map_values([])' \"$DEPS_FILE\" > \"$PRIVATE_DEPS_FILE\"" >&2
-  else
-    jq 'map_values([])' "$DEPS_FILE" > "$PRIVATE_DEPS_FILE"
+  if ! have brew; then
+    echo "Homebrew not found. Installing..." >&2
+    run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   fi
 fi
-[[ -f "$PRIVATE_DEPS_FILE" ]] && run jq empty "$PRIVATE_DEPS_FILE" >/dev/null
-
-# ---- Xcode CLI tools (macOS) ----
-if have xcode-select && ! xcode-select -p &>/dev/null; then
-  echo "Xcode CLI Tools not found. Triggering install prompt..." >&2
-  run xcode-select --install
-  echo "Re-run after Xcode CLI Tools finish installing (if needed)." >&2
-fi
-
-# ---- Homebrew ----
-if ! have brew; then
-  echo "Homebrew not found. Installing..." >&2
-  run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-# Apple Silicon path fix (same behavior as newer script)
+# Apple Silicon path fix
 if ! have brew && [[ -x /opt/homebrew/bin/brew ]]; then export PATH="/opt/homebrew/bin:$PATH"; fi
 have brew || { echo "ERROR: brew still not available after install" >&2; exit 1; }
 
-if [[ "$UPGRADE_BREW" -eq 1 ]]; then
-  echo "Updating and upgrading Homebrew packages..." >&2
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "+ brew update" >&2
-    echo "+ brew upgrade --cask --greedy" >&2
-    echo "+ brew upgrade" >&2
-  else
-    brew update
-    brew upgrade --cask --greedy
-    brew upgrade
+if [[ "$AUDIT_ONLY" -eq 0 ]]; then
+  if ! have jq; then
+    echo "Installing jq..." >&2
+    run brew install -q jq
   fi
 fi
+have jq || { echo "ERROR: jq is required" >&2; exit 1; }
 
-# jq is required
-if ! have jq; then
-  echo "Installing jq..." >&2
-  run brew install jq
+# ---- deps files ----
+[[ -f "$DEPS_FILE" ]] || { echo "ERROR: deps file not found: $DEPS_FILE" >&2; exit 1; }
+jq empty "$DEPS_FILE" >/dev/null
+[[ -f "$PRIVATE_DEPS_FILE" ]] && jq empty "$PRIVATE_DEPS_FILE" >/dev/null
+
+# Emit entries for a dep kind: public file first, then private.
+# The `|| true` matters: without it an absent private file makes this return 1,
+# and under `pipefail` that kills every `deps X | while ...` pipeline.
+deps() {
+  jq -c --raw-output ".${1}[]? // empty" "$DEPS_FILE"
+  [[ -f "$PRIVATE_DEPS_FILE" ]] && jq -c --raw-output ".${1}[]? // empty" "$PRIVATE_DEPS_FILE" || true
+}
+
+# ---------------------------------------------------------------------------
+# verify: is everything DECLARED actually installed?
+#   declared but missing -> ERROR, non-zero exit.
+# Installed-but-undeclared is deliberately NOT reported: deps.json is a want-list,
+# not a snapshot, and one-off installs should not generate noise.
+# ---------------------------------------------------------------------------
+VERIFY_ERRORS=0
+_miss() { echo "  ✗ MISSING ($1): $2" >&2; VERIFY_ERRORS=$((VERIFY_ERRORS + 1)); }
+
+verify() {
+  echo "── verify ─────────────────────────────────────────────" >&2
+
+  local declared installed
+  # Check against every installed formula, not `leaves`: gnupg/sqlite/k9s are installed
+  # but are not leaves, and comparing against leaves reports them missing.
+  declared="$(deps brew | sed 's|.*/||' | sort -u)"
+  installed="$(brew list --formula 2>/dev/null | sed 's|.*/||' | sort -u)"
+  while IFS= read -r p; do [[ -n "$p" ]] && _miss brew "$p"; done < <(comm -23 <(echo "$declared") <(echo "$installed"))
+
+  declared="$(deps brewcask | sed 's|.*/||' | sort -u)"
+  installed="$(brew list --cask 2>/dev/null | sort -u)"
+  while IFS= read -r p; do [[ -n "$p" ]] && _miss cask "$p"; done < <(comm -23 <(echo "$declared") <(echo "$installed"))
+
+  # go tools: declared by module path, installed as a bare binary name.
+  declared="$(deps go | sed 's|.*/||' | sort -u)"
+  installed="$(ls "$GOPATH_DIR/bin" 2>/dev/null | sort -u)"
+  while IFS= read -r p; do [[ -n "$p" ]] && _miss go "$p"; done < <(comm -23 <(echo "$declared") <(echo "$installed"))
+
+  # pip + the private SDKs, inside the declared venv.
+  if [[ -x "$PIP_VENV/bin/pip" ]]; then
+    installed="$("$PIP_VENV/bin/pip" list --format=freeze 2>/dev/null | cut -d= -f1 | tr 'A-Z_' 'a-z-' | sort -u)"
+    declared="$(deps pip | sed 's|\[.*||' | tr 'A-Z_' 'a-z-' | sort -u)"
+    while IFS= read -r p; do [[ -n "$p" ]] && _miss pip "$p"; done < <(comm -23 <(echo "$declared") <(echo "$installed"))
+  else
+    _miss pip "venv absent at $PIP_VENV"
+  fi
+
+  # Private SDKs are the thing most likely to be silently absent on a clean machine.
+  local n_priv
+  n_priv="$(deps pip_private | wc -l | tr -d ' ')"
+  if [[ "$n_priv" -eq 0 ]]; then
+    _miss sdk "no pip_private entries declared — Cloudsmith SDKs will not be installed (see README)"
+  else
+    while IFS= read -r entry; do
+      [[ -n "$entry" ]] || continue
+      local vname vcmd
+      vname="$(jq -r '.name' <<<"$entry")"
+      vcmd="$(jq -r '.verify // empty' <<<"$entry")"
+      [[ -n "$vcmd" ]] || continue
+      (source "$PIP_VENV/bin/activate" && bash -c "$vcmd") &>/dev/null || _miss sdk "$vname"
+    done < <(deps pip_private)
+  fi
+
+  if [[ "$VERIFY_ERRORS" -gt 0 ]]; then
+    echo "❌ verify: $VERIFY_ERRORS declared dependency/dependencies missing." >&2
+    return 1
+  fi
+  echo "✅ verify: everything declared is installed." >&2
+  return 0
+}
+
+if [[ "$AUDIT_ONLY" -eq 1 ]]; then
+  trap - ERR   # a failed verify is a reported result, not an unhandled error
+  verify
+  exit $?
+fi
+
+# ---- private deps ----
+# Deliberately NOT auto-scaffolded to an empty file. Doing so produced a green run
+# on a clean machine that installed zero Cloudsmith SDKs.
+if [[ ! -f "$PRIVATE_DEPS_FILE" ]]; then
+  echo "WARNING: $PRIVATE_DEPS_FILE not found — Cloudsmith SDKs will be skipped." >&2
+  echo "         See README.md; verify at the end of this run will fail loudly." >&2
+fi
+
+echo "Updating and upgrading Homebrew packages..." >&2
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "+ brew update && brew upgrade --cask --greedy && brew upgrade" >&2
+else
+  brew update
+  brew upgrade --cask --greedy
+  brew upgrade
 fi
 
 # ---- brew formulae ----
@@ -81,7 +151,7 @@ deps brew | while IFS= read -r p; do
   if brew list "$p" &>/dev/null; then
     echo "✓ brew already installed: $p" >&2
   else
-    [[ "$QUIET" -eq 1 ]] && run brew install -q "$p" || run brew install "$p"
+    run brew install -q "$p"
   fi
 done
 
@@ -92,12 +162,16 @@ deps brewcask | while IFS= read -r p; do
   if brew list --cask "$p" &>/dev/null; then
     echo "✓ cask already installed: $p" >&2
   else
-    [[ "$QUIET" -eq 1 ]] && run brew install -q --cask "$p" || run brew install --cask "$p"
+    run brew install -q --cask "$p"
   fi
 done
 
-# ---- custom commands (no eval; same as newer script) ----
+# ---- custom commands ----
+# Output is NOT swallowed: a failure here aborts the run, and a generic trap line
+# with no log is unactionable.
 echo "Running custom installers/commands..." >&2
+export GOPATH="$GOPATH_DIR"
+export PATH="$GOPATH_DIR/bin:$PATH"
 deps custom | while IFS= read -r entry; do
   [[ -n "$entry" ]] || continue
   name="$(jq -r '.name' <<<"$entry")"
@@ -108,42 +182,46 @@ deps custom | while IFS= read -r entry; do
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "+ bash -lc \"$cmd\"" >&2
   else
-    bash -lc "$cmd" >/dev/null 2>&1 || { echo "ERROR: custom command failed: $name" >&2; exit 1; }
+    bash -lc "$cmd" || { echo "ERROR: custom command failed: $name" >&2; exit 1; }
   fi
 done
 
-# ---- go tools (parallel; uses go env GOPATH like newer script) ----
+# ---- go tools ----
 if have go; then
   echo "Installing/upgrading go tools..." >&2
-  GOPATH_ACTUAL="$(go env GOPATH)"
-  [[ -n "$GOPATH_ACTUAL" ]] || { echo "ERROR: go env GOPATH returned empty" >&2; exit 1; }
-  export PATH="$GOPATH_ACTUAL/bin:$PATH"
+  # Set GOPATH explicitly rather than inheriting: `go env GOPATH` is ~/go on a machine
+  # whose .zshrc (which exports ~/golang) has not been deployed yet, and ~/go/bin is
+  # never on PATH.
+  export GOPATH="$GOPATH_DIR"
+  export PATH="$GOPATH_DIR/bin:$PATH"
 
   deps go | xargs -I{} -P "$MAX_JOBS" bash -lc '
     set -Eeuo pipefail
     pkg="$1"
     echo "→ go install $pkg@latest" >&2
-    go install "$pkg"@latest
+    go install "$pkg"@latest || { echo "ERROR: go install failed: $pkg" >&2; exit 1; }
   ' _ {}
 else
   echo "Go not found; skipping go installs." >&2
 fi
 
 # ---- gcloud components ----
-if [[ "$GCLOUD_COMPONENTS_INSTALL" -eq 1 ]]; then
-  if have gcloud; then
-    echo "Installing gcloud components..." >&2
-    deps gcloud | while IFS= read -r c; do
-      [[ -n "$c" ]] || continue
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "+ gcloud components install --quiet $c" >&2
-      else
-        gcloud components install --quiet "$c" || { echo "ERROR: gcloud component install failed: $c" >&2; exit 1; }
-      fi
-    done
-  else
-    echo "gcloud not found; skipping gcloud components (install google-cloud-sdk first)." >&2
-  fi
+# The cask does not put gcloud on PATH; interactively that is done by the oh-my-zsh
+# gcloud plugin, which this bash script never sources.
+[[ -r /opt/homebrew/share/google-cloud-sdk/path.bash.inc ]] && \
+  . /opt/homebrew/share/google-cloud-sdk/path.bash.inc
+if have gcloud; then
+  echo "Installing gcloud components..." >&2
+  deps gcloud | while IFS= read -r c; do
+    [[ -n "$c" ]] || continue
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "+ gcloud components install --quiet $c" >&2
+    else
+      gcloud components install --quiet "$c" || { echo "ERROR: gcloud component install failed: $c" >&2; exit 1; }
+    fi
+  done
+else
+  echo "gcloud not found; skipping gcloud components (install google-cloud-sdk first)." >&2
 fi
 
 # ---- nvm/node ----
@@ -151,11 +229,16 @@ export NVM_DIR="$HOME/.nvm"
 [[ -s "$NVM_DIR/nvm.sh" ]] && . "$NVM_DIR/nvm.sh"
 [[ -s "$NVM_DIR/bash_completion" ]] && . "$NVM_DIR/bash_completion" || true
 
-if have nvm && [[ "$NVM_INSTALL_DEFAULT" -eq 1 ]]; then
+if have nvm; then
   echo "Installing node versions via nvm..." >&2
   deps nvm | while IFS= read -r v; do
     [[ -n "$v" ]] || continue
-    [[ "$DRY_RUN" -eq 1 ]] && echo "+ nvm install \"$v\"" >&2 || nvm install "$v"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "+ nvm install \"$v\" && nvm alias default \"$v\"" >&2
+    else
+      nvm install "$v"
+      nvm alias default "$v"
+    fi
   done
 else
   echo "Skipping nvm installs (nvm not available)." >&2
@@ -172,46 +255,53 @@ else
   echo "npm not found; skipping npm globals." >&2
 fi
 
-# ---- python venv + pip (single-shot; recreate toggle) ----
+# ---- python venv + pip ----
 if [[ "$RECREATE_VENV" -eq 1 && -d "$PIP_VENV" ]]; then
   echo "Removing venv at $PIP_VENV (RECREATE_VENV=1)..." >&2
   run rm -rf "$PIP_VENV"
 fi
 
+# Derive the interpreter from brew rather than hardcoding a path a `brew upgrade` can invalidate.
+PYTHON_FORMULA="$(deps brew | grep -E '^python@' | head -1)"
+: "${PYTHON_FORMULA:=python@3.13}"
+PYTHON_BIN="${PYTHON_BIN:-$(brew --prefix "$PYTHON_FORMULA" 2>/dev/null)/bin/python${PYTHON_FORMULA#python@}}"
+
 if [[ ! -d "$PIP_VENV" ]]; then
-  echo "Creating venv at $PIP_VENV ..." >&2
+  echo "Creating venv at $PIP_VENV (from $PYTHON_BIN)..." >&2
   [[ -x "$PYTHON_BIN" ]] || { echo "ERROR: Python not executable at $PYTHON_BIN" >&2; exit 1; }
   run "$PYTHON_BIN" -m venv "$PIP_VENV"
 fi
 
-# shellcheck disable=SC1090
+# shellcheck disable=SC1091
 source "$PIP_VENV/bin/activate"
 
 echo "Ensuring pip is up to date..." >&2
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "+ python -m ensurepip --upgrade" >&2
-  echo "+ pip install -U pip" >&2
+  echo "+ python -m ensurepip --upgrade && pip install -U pip" >&2
 else
   python -m ensurepip --upgrade
   pip install -U pip
 fi
 
 echo "Installing/upgrading pip packages..." >&2
-PIP_PKGS="$(deps pip | tr '\n' ' ')"
-if [[ -n "$PIP_PKGS" ]]; then
-  [[ "$DRY_RUN" -eq 1 ]] && echo "+ pip install -qU $PIP_PKGS" >&2 || pip install -qU $PIP_PKGS
+# Array, not a bare string: `pandas[performance]` and `polars[...]` are bracket globs
+# and would be rewritten by a matching filename in the CWD.
+PIP_PKGS=()
+while IFS= read -r p; do [[ -n "$p" ]] && PIP_PKGS+=("$p"); done < <(deps pip)
+if [[ "${#PIP_PKGS[@]}" -gt 0 ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "+ pip install -qU ${PIP_PKGS[*]}" >&2
+  else
+    pip install -qU "${PIP_PKGS[@]}"
+  fi
 else
   echo "No pip packages listed." >&2
 fi
 
-# ---- private pip packages (e.g. Cloudsmith; entries live in gitignored private deps) ----
-# Each entry is an object:
-#   { "name": "pkg", "index_url": "https://user:token@host/.../simple/",
-#     "verify": "python -c '...'" }          # optional: sanity check, fails the run if it errors
-# PyPI is added as an extra index so the private package's public dependencies
-# (grpcio, protobuf, ...) resolve — the Cloudsmith index only serves the package
-# itself. The package is expected to declare its own runtime constraints and to
-# ship any required .pth/site config in its wheel.
+# ---- private pip packages (Cloudsmith) ----
+# Entries live in the gitignored private deps file:
+#   { "name": "pkg", "index_url": "https://user:token@host/.../simple/", "verify": "python -c '...'" }
+# PyPI is an extra index so the package's public dependencies resolve.
 echo "Installing private pip packages..." >&2
 deps pip_private | while IFS= read -r entry; do
   [[ -n "$entry" ]] || continue
@@ -246,7 +336,7 @@ else
   echo "jupyter not found; skipping extensions." >&2
 fi
 
-# ---- sdkman (relaxed subshell; tolerate benign failures like newer script) ----
+# ---- sdkman ----
 SDKMAN_INIT="$HOME/.sdkman/bin/sdkman-init.sh"
 if [[ -s "$SDKMAN_INIT" ]]; then
   echo "Installing SDKMAN packages..." >&2
@@ -279,4 +369,15 @@ else
   echo "sdkman not installed; skipping SDKMAN section." >&2
 fi
 
+# ---- verify ----
+# Every `have X → skip` branch above is an unconditional pass on a clean machine.
+# This is what turns those silent skips into a non-zero exit.
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "DRY_RUN: skipping verify." >&2
+  echo "✅ Done (dry run)." >&2
+  exit 0
+fi
+
+trap - ERR   # a failed verify is a reported result, not an unhandled error
+verify || { echo "❌ Setup finished with missing dependencies (see above)." >&2; exit 1; }
 echo "✅ Done." >&2

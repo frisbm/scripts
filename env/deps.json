@@ -1,6 +1,8 @@
 {
   "brew": [
     "age",
+    "asdf",
+    "bzip2",
     "coreutils",
     "curl",
     "derailed/k9s/k9s",
@@ -10,14 +12,17 @@
     "git",
     "gnupg",
     "go",
+    "graphviz",
     "grpcurl",
     "htop",
     "jq",
     "kubectx",
     "kubernetes-cli",
+    "lftp",
     "libpq",
+    "poppler",
+    "postgresql@14",
     "postgresql@15",
-    "powerlevel10k",
     "python@3.13",
     "ripgrep",
     "ruff",
@@ -32,13 +37,19 @@
     "zsh-autosuggestions",
     "zsh-syntax-highlighting"
   ],
-  "brewcask": ["google-cloud-sdk"],
+  "brewcask": [
+    "docker-desktop",
+    "gcloud-cli"
+  ],
   "go": [
-    "golang.org/x/tools/cmd/goimports",
-    "github.com/oligot/go-mod-upgrade",
     "github.com/bokwoon95/wgo",
+    "github.com/go-delve/delve/cmd/dlv",
     "github.com/golangci/golines",
-    "golang.org/x/tools/gopls"
+    "github.com/oligot/go-mod-upgrade",
+    "golang.org/x/tools/cmd/goimports",
+    "golang.org/x/tools/gopls",
+    "gotest.tools/gotestsum",
+    "honnef.co/go/tools/cmd/staticcheck"
   ],
   "gcloud": [
     "beta",
@@ -52,35 +63,40 @@
     "skaffold",
     "gke-gcloud-auth-plugin"
   ],
-  "nvm": ["node"],
-  "npm": ["npm-check-updates"],
+  "nvm": [
+    "lts/*"
+  ],
+  "npm": [
+    "npm-check-updates"
+  ],
   "pip": [
+    "black",
+    "duckdb",
+    "filelock",
+    "google-cloud-bigquery",
+    "grpcio",
+    "grpcio-tools",
+    "httpx",
+    "isort",
     "jupyterlab",
     "jupyterlab-code-formatter",
     "numpy",
-    "pytest",
     "pandas[performance]",
-    "duckdb",
-    "requests",
-    "urllib3",
-    "pytz",
-    "black",
-    "isort",
-    "pyarrow",
     "polars[numpy,fsspec,pandas,iceberg]",
-    "httpx",
     "pre-commit",
-    "psycopg2-binary",
-    "filelock",
-    "pytest-xdist",
-    "grpcio",
-    "grpcio-tools",
     "protovalidate",
-    "google-cloud-bigquery"
+    "psycopg2-binary",
+    "pyarrow",
+    "pytest",
+    "pytest-xdist",
+    "pytz",
+    "requests",
+    "urllib3"
   ],
   "pip_private": [],
-  "jupyter": ["jupyterlab_code_formatter"],
-  "sdk": ["java 17.0.14-tem", "scala 2.13.16"],
+  "jupyter": [
+    "jupyterlab_code_formatter"
+  ],
   "custom": [
     {
       "name": "nvm",
@@ -104,7 +120,27 @@
     },
     {
       "name": "sdkman",
-      "command": "curl -s https://get.sdkman.io | bash"
+      "command": "[ -d \"$HOME/.sdkman\" ] || curl -s https://get.sdkman.io | bash"
+    },
+    {
+      "name": "oh-my-zsh",
+      "command": "[ -d \"$HOME/.oh-my-zsh\" ] || sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended --keep-zshrc"
+    },
+    {
+      "name": "powerlevel10k",
+      "command": "[ -d \"$HOME/.oh-my-zsh/custom/themes/powerlevel10k\" ] || git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \"$HOME/.oh-my-zsh/custom/themes/powerlevel10k\""
+    },
+    {
+      "name": "zsh-autosuggestions",
+      "command": "[ -d \"$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions\" ] || git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions \"$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions\""
+    },
+    {
+      "name": "zsh-syntax-highlighting",
+      "command": "[ -d \"$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting\" ] || git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git \"$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting\""
     }
+  ],
+  "sdk": [
+    "java 17.0.14-tem",
+    "scala 2.13.16"
   ]
 }
